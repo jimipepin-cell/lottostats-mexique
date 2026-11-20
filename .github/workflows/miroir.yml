@@ -1,0 +1,37 @@
+# Miroir des historiques officiels de la Loteria Nacional (Mexique) pour Lotto-Stats.
+# Le site officiel ne repond pas aux serveurs d'Europe : GitHub (Etats-Unis) recopie les 7 fichiers toutes les 2 h,
+# le robot du serveur les lit ici. Fichier a placer dans le depot : .github/workflows/miroir.yml
+name: Miroir Loteria Nacional
+
+on:
+  schedule:
+    - cron: "17 */2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  miroir:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Telecharger les historiques officiels
+        run: |
+          mkdir -p csv
+          for f in Melate Revancha Revanchita Melate-Retro Chispazo Tris GanaGato; do
+            if curl -fsSL --retry 3 --retry-delay 20 --max-time 180 -A "Mozilla/5.0 (X11; Linux x86_64)" \
+                 -o "csv/$f.tmp" "https://www.loterianacional.gob.mx/Documentos/Historicos/$f.csv" \
+               && head -c 300 "csv/$f.tmp" | grep -qi "CONCURSO" && [ "$(wc -l < "csv/$f.tmp")" -gt 100 ]; then
+              mv "csv/$f.tmp" "csv/$f.csv"; echo "ok $f ($(wc -l < "csv/$f.csv") lignes)"
+            else
+              rm -f "csv/$f.tmp"; echo "::warning::$f non telecharge, ancienne copie gardee"
+            fi
+          done
+      - name: Enregistrer si quelque chose a change
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add csv
+          git diff --cached --quiet && echo "rien de nouveau" || { git commit -q -m "Historiques $(date -u '+%Y-%m-%d %H:%M') UTC"; git push; }
