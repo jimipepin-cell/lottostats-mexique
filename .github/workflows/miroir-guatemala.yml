@@ -1,0 +1,30 @@
+name: Miroir Loteria de Guatemala
+on:
+  schedule:
+    - cron: "47 */2 * * *"
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  miroir:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Telecharger les pages de resultats
+        run: |
+          mkdir -p gt
+          UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36"
+          for p in "results:results" "home:"; do
+            name="${p%%:*}"; path="${p#*:}"
+            code=$(curl -sSL --retry 3 --retry-delay 15 --max-time 90 -A "$UA" -o "gt/$name.tmp" -w "%{http_code}" \
+                   "https://www.loteriadeguatemala.com.gt/$path" || echo 000)
+            echo "$name : HTTP $code ($(wc -c < "gt/$name.tmp" 2>/dev/null || echo 0) octets)"
+            if [ "$code" = "200" ] && [ "$(wc -c < "gt/$name.tmp")" -gt 2000 ]; then mv "gt/$name.tmp" "gt/$name.html"; else rm -f "gt/$name.tmp"; fi
+          done
+      - name: Enregistrer si quelque chose a change
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add gt
+          git diff --cached --quiet && echo "rien de nouveau" || { git commit -q -m "Guatemala $(date -u '+%Y-%m-%d %H:%M') UTC"; git push; }
